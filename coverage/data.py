@@ -416,7 +416,7 @@ class CoverageData(object):
         self._runs[0].update(kwargs)
         self._validate()
 
-    def touch_file(self, filename):
+    def touch_file(self, filename, filetracer = ""):
         """Ensure that `filename` appears in the data, empty if needed."""
         if self._debug and self._debug.should('dataop'):
             self._debug.write("Touching %r" % (filename,))
@@ -428,6 +428,8 @@ class CoverageData(object):
         else:
             where = self._lines
         where.setdefault(filename, [])
+        # Set the tracer for this file
+        self._file_tracers[filename] = filetracer
 
         self._validate()
 

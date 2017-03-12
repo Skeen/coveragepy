@@ -89,6 +89,15 @@ class CoveragePlugin(object):
         """
         _needs_to_implement(self, "file_reporter")
 
+    def find_unexecuted_files(self, src_dir):
+        """Get a list of unexecuted files in `src_dir`.
+
+        Search for files in `src_dir` that are probably of interest,
+        and add them as unexecuted files in `self.data`.
+
+        """
+        return []
+
     def sys_info(self):
         """Get a list of information useful for debugging.
 

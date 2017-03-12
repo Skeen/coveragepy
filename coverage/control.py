@@ -843,6 +843,20 @@ class Coverage(object):
         and add them as unexecuted files in `self.data`.
 
         """
+
+        # Let each plugin search for unexecuted files
+        for plugin in self.plugins:
+            xfiles = plugin.find_unexecuted_files(src_dir);
+            for x_file in xfiles:
+                x_file = files.canonical_filename(x_file)
+
+                if self.omit_match and self.omit_match.match(x_file):
+                    # Turns out this file was omitted, so don't pull it back
+                    # in as unexecuted.
+                    continue
+
+                self.data.touch_file(x_file, plugin._coverage_plugin_name)
+
         for py_file in find_python_files(src_dir):
             py_file = files.canonical_filename(py_file)
 
