@@ -846,8 +846,7 @@ class Coverage(object):
 
         # Let each plugin search for unexecuted files
         for plugin in self.plugins:
-            xfiles = plugin.find_unexecuted_files(src_dir);
-            for x_file in xfiles:
+            for x_file in plugin.find_executable_files(src_dir):
                 x_file = files.canonical_filename(x_file)
 
                 if self.omit_match and self.omit_match.match(x_file):
