@@ -10,6 +10,7 @@ import platform
 import re
 import sys
 import traceback
+import itertools
 
 from coverage import env, files
 from coverage.annotate import AnnotateReporter
@@ -836,6 +837,11 @@ class Coverage(object):
         self._measured = False
         return self.data
 
+    def _find_plugin_files(self, src_dir):
+        for plugin in self.plugins:
+            for x_file in plugin.find_executable_files(src_dir):
+                yield x_file, plugin._coverage_plugin_name
+
     def _find_unexecuted_files(self, src_dir):
         """Find unexecuted files in `src_dir`.
 
@@ -843,28 +849,16 @@ class Coverage(object):
         and add them as unexecuted files in `self.data`.
 
         """
+        py_files = ((py_file, "") for py_file in files.find_python_files(src_dir))
+        plugin_files = self._find_plugin_files(src_dir)
 
-        # Let each plugin search for unexecuted files
-        for plugin in self.plugins:
-            for x_file in plugin.find_executable_files(src_dir):
-                x_file = files.canonical_filename(x_file)
-
-                if self.omit_match and self.omit_match.match(x_file):
-                    # Turns out this file was omitted, so don't pull it back
-                    # in as unexecuted.
-                    continue
-
-                self.data.touch_file(x_file, plugin._coverage_plugin_name)
-
-        for py_file in find_python_files(src_dir):
-            py_file = files.canonical_filename(py_file)
-
-            if self.omit_match and self.omit_match.match(py_file):
+        for file_path, plugin_name in itertools.chain(py_files, plugin_files):
+            file_path = files.canonical_filename(file_path)
+            if self.omit_match and self.omit_match.match(file_path):
                 # Turns out this file was omitted, so don't pull it back
                 # in as unexecuted.
                 continue
-
-            self.data.touch_file(py_file)
+            self.data.touch_file(file_path, plugin_name)
 
     # Backward compatibility with version 1.
     def analysis(self, morf):
