@@ -3,14 +3,15 @@
 
 """Core control stuff for coverage.py."""
 
+
 import atexit
 import inspect
+import itertools
 import os
 import platform
 import re
 import sys
 import traceback
-import itertools
 
 from coverage import env, files
 from coverage.annotate import AnnotateReporter
