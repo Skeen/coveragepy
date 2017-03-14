@@ -128,7 +128,7 @@ class SourceEncodingTest(CoverageTest):
             )
 
     def test_detect_source_encoding_not_in_comment(self):
-        if env.PYPY and env.PY3:
+        if env.PYPY and env.PY3:        # pragma: no metacov
             # PyPy3 gets this case wrong. Not sure what I can do about it,
             # so skip the test.
             self.skipTest("PyPy3 is wrong about non-comment encoding. Skip it.")
@@ -228,11 +228,15 @@ class Bug529Test(CoverageTest):
     """Test of bug 529"""
 
     def test_bug_529(self):
+        # Don't over-neuter coding declarations. This happened with a test
+        # file which contained code in multi-line strings, all with coding
+        # declarations. The neutering of the file also changed the multi-line
+        # strings, which it shouldn't have.
         self.make_file("the_test.py", '''\
             # -*- coding: utf-8 -*-
             import unittest
-            class FailsUnderCoverageTest(unittest.TestCase):
-                def test_fails_under_coverage(self):
+            class Bug529Test(unittest.TestCase):
+                def test_two_strings_are_equal(self):
                     src1 = u"""\\
                         # -*- coding: utf-8 -*-
                         # Just a comment.

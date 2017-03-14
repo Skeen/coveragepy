@@ -11,11 +11,11 @@ import warnings
 
 import coverage
 from coverage import env
-from coverage.backward import StringIO
+from coverage.backward import StringIO, import_local_file
 from coverage.misc import CoverageException
 from coverage.report import Reporter
 
-from tests.coveragetest import CoverageTest
+from tests.coveragetest import CoverageTest, CoverageTestMethodsMixin
 
 
 class ApiTest(CoverageTest):
@@ -281,17 +281,70 @@ class ApiTest(CoverageTest):
         self.start_import_stop(cov, "code2")
         self.check_code1_code2(cov)
 
-    def test_start_save_stop(self):             # pragma: not covered
-        self.skipTest("Expected failure: https://bitbucket.org/ned/coveragepy/issue/79")
+    def test_start_save_stop(self):
         self.make_code1_code2()
         cov = coverage.Coverage()
         cov.start()
-        self.import_local_file("code1")
-        cov.save()
-        self.import_local_file("code2")
-        cov.stop()
-
+        import_local_file("code1")                                     # pragma: nested
+        cov.save()                                                     # pragma: nested
+        import_local_file("code2")                                     # pragma: nested
+        cov.stop()                                                     # pragma: nested
         self.check_code1_code2(cov)
+
+    def test_start_save_nostop(self):
+        self.make_code1_code2()
+        cov = coverage.Coverage()
+        cov.start()
+        import_local_file("code1")                                     # pragma: nested
+        cov.save()                                                     # pragma: nested
+        import_local_file("code2")                                     # pragma: nested
+        self.check_code1_code2(cov)                                    # pragma: nested
+        # Then stop it, or the test suite gets out of whack.
+        cov.stop()                                                     # pragma: nested
+
+    def test_two_getdata_only_warn_once(self):
+        self.make_code1_code2()
+        cov = coverage.Coverage(source=["."], omit=["code1.py"])
+        cov.start()
+        import_local_file("code1")                                     # pragma: nested
+        cov.stop()                                                     # pragma: nested
+        # We didn't collect any data, so we should get a warning.
+        with self.assert_warnings(cov, ["No data was collected"]):
+            cov.get_data()
+        # But calling get_data a second time with no intervening activity
+        # won't make another warning.
+        with self.assert_warnings(cov, []):
+            cov.get_data()
+
+    def test_two_getdata_only_warn_once_nostop(self):
+        self.make_code1_code2()
+        cov = coverage.Coverage(source=["."], omit=["code1.py"])
+        cov.start()
+        import_local_file("code1")                                     # pragma: nested
+        # We didn't collect any data, so we should get a warning.
+        with self.assert_warnings(cov, ["No data was collected"]):     # pragma: nested
+            cov.get_data()                                             # pragma: nested
+        # But calling get_data a second time with no intervening activity
+        # won't make another warning.
+        with self.assert_warnings(cov, []):                            # pragma: nested
+            cov.get_data()                                             # pragma: nested
+        # Then stop it, or the test suite gets out of whack.
+        cov.stop()                                                     # pragma: nested
+
+    def test_two_getdata_warn_twice(self):
+        self.make_code1_code2()
+        cov = coverage.Coverage(source=["."], omit=["code1.py", "code2.py"])
+        cov.start()
+        import_local_file("code1")                                     # pragma: nested
+        # We didn't collect any data, so we should get a warning.
+        with self.assert_warnings(cov, ["No data was collected"]):     # pragma: nested
+            cov.save()                                                 # pragma: nested
+        import_local_file("code2")                                     # pragma: nested
+        # Calling get_data a second time after tracing some more will warn again.
+        with self.assert_warnings(cov, ["No data was collected"]):     # pragma: nested
+            cov.get_data()                                             # pragma: nested
+        # Then stop it, or the test suite gets out of whack.
+        cov.stop()                                                     # pragma: nested
 
     def make_good_data_files(self):
         """Make some good data files."""
@@ -376,16 +429,14 @@ class UsingModulesMixin(object):
     def setUp(self):
         super(UsingModulesMixin, self).setUp()
 
-        old_dir = os.getcwd()
-        os.chdir(self.nice_file(os.path.dirname(__file__), 'modules'))
-        self.addCleanup(os.chdir, old_dir)
+        self.chdir(self.nice_file(os.path.dirname(__file__), 'modules'))
 
         # Parent class saves and restores sys.path, we can just modify it.
         sys.path.append(".")
         sys.path.append("../moremodules")
 
 
-class OmitIncludeTestsMixin(UsingModulesMixin):
+class OmitIncludeTestsMixin(UsingModulesMixin, CoverageTestMethodsMixin):
     """Test methods for coverage methods taking include and omit."""
 
     def filenames_in(self, summary, filenames):

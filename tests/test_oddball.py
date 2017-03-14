@@ -5,10 +5,12 @@
 
 import sys
 
+from flaky import flaky
 import pytest
 
 import coverage
 from coverage import env
+from coverage.backward import import_local_file
 from coverage.files import abs_file
 
 from tests.coveragetest import CoverageTest
@@ -118,7 +120,7 @@ class RecursionTest(CoverageTest):
 
         pytrace = (cov.collector.tracer_name() == "PyTracer")
         expected_missing = [3]
-        if pytrace:
+        if pytrace:                                 # pragma: no metacov
             expected_missing += [9, 10, 11]
 
         _, statements, missing, _ = cov.analysis("recur.py")
@@ -126,7 +128,7 @@ class RecursionTest(CoverageTest):
         self.assertEqual(missing, expected_missing)
 
         # Get a warning about the stackoverflow effect on the tracing function.
-        if pytrace:
+        if pytrace:                                 # pragma: no metacov
             self.assertEqual(cov._warnings,
                 ["Trace function changed, measurement is likely wrong: None"]
                 )
@@ -143,6 +145,7 @@ class MemoryLeakTest(CoverageTest):
     It may still fail occasionally, especially on PyPy.
 
     """
+    @flaky
     def test_for_leaks(self):
         if env.JYTHON:
             self.skipTest("Don't bother on Jython")
@@ -229,6 +232,9 @@ class PyexpatTest(CoverageTest):
     """Pyexpat screws up tracing. Make sure we've counter-defended properly."""
 
     def test_pyexpat(self):
+        if env.JYTHON:
+            self.skipTest("Pyexpat isn't a problem on Jython")
+
         # pyexpat calls the trace function explicitly (inexplicably), and does
         # it wrong for exceptions.  Parsing a DOCTYPE for some reason throws
         # an exception internally, and triggers its wrong behavior.  This test
@@ -328,7 +334,7 @@ class ExceptionTest(CoverageTest):
         # Import all the modules before starting coverage, so the def lines
         # won't be in all the results.
         for mod in "oops fly catch doit".split():
-            self.import_local_file(mod)
+            import_local_file(mod)
 
         # Each run nests the functions differently to get different
         # combinations of catching exceptions and letting them fly.
@@ -379,6 +385,13 @@ class ExceptionTest(CoverageTest):
                 lines = data.lines(abs_file(filename))
                 clean_lines[filename] = sorted(lines)
 
+            if env.JYTHON:                  # pragma: only jython
+                # Jython doesn't report on try or except lines, so take those
+                # out of the expected lines.
+                invisible = [202, 206, 302, 304]
+                for lines in lines_expected.values():
+                    lines[:] = [l for l in lines if l not in invisible]
+
             self.assertEqual(clean_lines, lines_expected)
 
 
@@ -388,15 +401,11 @@ class DoctestTest(CoverageTest):
     def setUp(self):
         super(DoctestTest, self).setUp()
 
-        # Oh, the irony!  This test case exists because Python 2.4's
-        # doctest module doesn't play well with coverage.  But nose fixes
-        # the problem by monkeypatching doctest.  I want to undo the
-        # monkeypatch to be sure I'm getting the doctest module that users
-        # of coverage will get.  Deleting the imported module here is
-        # enough: when the test imports doctest again, it will get a fresh
-        # copy without the monkeypatch.
-        if 'doctest' in sys.modules:
-            del sys.modules['doctest']
+        # This test case exists because Python 2.4's doctest module didn't play
+        # well with coverage. Nose fixes the problem by monkeypatching doctest.
+        # I want to be sure there's no monkeypatch and that I'm getting the
+        # doctest module that users of coverage will get.
+        assert 'doctest' not in sys.modules
 
     def test_doctest(self):
         self.check_coverage('''\
@@ -494,7 +503,7 @@ class GettraceTest(CoverageTest):
         )
 
     @pytest.mark.expensive
-    def test_atexit_gettrace(self):             # pragma: not covered
+    def test_atexit_gettrace(self):             # pragma: no metacov
         # This is not a test of coverage at all, but of our understanding
         # of this edge-case behavior in various Pythons.
         if env.METACOV:

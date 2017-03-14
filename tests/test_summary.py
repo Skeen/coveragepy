@@ -1,4 +1,4 @@
-# coding: utf8
+# coding: utf-8
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
 # For details: https://bitbucket.org/ned/coveragepy/src/default/NOTICE.txt
 
@@ -418,6 +418,9 @@ class SummaryTest(CoverageTest):
         )
 
     def test_accenteddotpy_not_python(self):
+        if env.JYTHON:
+            self.skipTest("Jython doesn't like accented file names")
+
         # We run a .py file with a non-ascii name, and when reporting, we can't
         # parse it as Python.  We should get an error message in the report.
 
@@ -585,7 +588,7 @@ class SummaryTest(CoverageTest):
         # Python 3 puts the .pyc files in a __pycache__ directory, and will
         # not import from there without source.  It will import a .pyc from
         # the source location though.
-        if not os.path.exists("mod.pyc"):
+        if env.PY3 and not env.JYTHON:
             pycs = glob.glob("__pycache__/mod.*.pyc")
             self.assertEqual(len(pycs), 1)
             os.rename(pycs[0], "mod.pyc")

@@ -5,14 +5,12 @@
 
 import contextlib
 import datetime
-import glob
-import itertools
 import os
 import random
 import re
 import shlex
-import shutil
 import sys
+import types
 
 from unittest_mixins import (
     EnvironmentAwareMixin, StdStreamCapturingMixin, TempDirMixin,
@@ -21,25 +19,50 @@ from unittest_mixins import (
 
 import coverage
 from coverage import env
-from coverage.backunittest import TestCase
+from coverage.backunittest import TestCase, unittest
 from coverage.backward import StringIO, import_local_file, string_class, shlex_quote
-from coverage.backward import invalidate_import_caches
 from coverage.cmdline import CoverageScript
 from coverage.debug import _TEST_NAME_FILE, DebugControl
+from coverage.misc import StopEverything
 
-from tests.helpers import run_command
+from tests.helpers import run_command, SuperModuleCleaner
 
 
 # Status returns for the command line.
 OK, ERR = 0, 1
 
 
+def convert_skip_exceptions(method):
+    """A decorator for test methods to convert StopEverything to SkipTest."""
+    def wrapper(*args, **kwargs):
+        """Run the test method, and convert exceptions."""
+        try:
+            result = method(*args, **kwargs)
+        except StopEverything:
+            raise unittest.SkipTest("StopEverything!")
+        return result
+    return wrapper
+
+
+class SkipConvertingMetaclass(type):
+    """Decorate all test methods to convert StopEverything to SkipTest."""
+    def __new__(mcs, name, bases, attrs):
+        for attr_name, attr_value in attrs.items():
+            if attr_name.startswith('test_') and isinstance(attr_value, types.FunctionType):
+                attrs[attr_name] = convert_skip_exceptions(attr_value)
+
+        return super(SkipConvertingMetaclass, mcs).__new__(mcs, name, bases, attrs)
+
+
+CoverageTestMethodsMixin = SkipConvertingMetaclass('CoverageTestMethodsMixin', (), {})
+
 class CoverageTest(
     EnvironmentAwareMixin,
     StdStreamCapturingMixin,
     TempDirMixin,
     DelayedAssertionMixin,
-    TestCase
+    CoverageTestMethodsMixin,
+    TestCase,
 ):
     """A base class for coverage.py test cases."""
 
@@ -51,6 +74,8 @@ class CoverageTest(
 
     def setUp(self):
         super(CoverageTest, self).setUp()
+
+        self.module_cleaner = SuperModuleCleaner()
 
         # Attributes for getting info about what happened.
         self.last_command_status = None
@@ -70,27 +95,7 @@ class CoverageTest(
         one test.
 
         """
-        # So that we can re-import files, clean them out first.
-        self.cleanup_modules()
-        # Also have to clean out the .pyc file, since the timestamp
-        # resolution is only one second, a changed file might not be
-        # picked up.
-        for pyc in itertools.chain(glob.glob('*.pyc'), glob.glob('*$py.class')):
-            os.remove(pyc)
-        if os.path.exists("__pycache__"):
-            shutil.rmtree("__pycache__")
-
-        invalidate_import_caches()
-
-    def import_local_file(self, modname, modfile=None):
-        """Import a local file as a module.
-
-        Opens a file in the current directory named `modname`.py, imports it
-        as `modname`, and returns the module object. `modfile` is the file to
-        import if it isn't in the current directory.
-
-        """
-        return import_local_file(modname, modfile)
+        self.module_cleaner.clean_local_file_imports()
 
     def start_import_stop(self, cov, modname, modfile=None):
         """Start coverage, import a file, then stop coverage.
@@ -105,7 +110,7 @@ class CoverageTest(
         cov.start()
         try:                                    # pragma: nested
             # Import the Python file, executing it.
-            mod = self.import_local_file(modname, modfile)
+            mod = import_local_file(modname, modfile)
         finally:                                # pragma: nested
             # Stop coverage.py.
             cov.stop()
@@ -265,7 +270,16 @@ class CoverageTest(
 
     @contextlib.contextmanager
     def assert_warnings(self, cov, warnings):
-        """A context manager to check that particular warnings happened in `cov`."""
+        """A context manager to check that particular warnings happened in `cov`.
+
+        `cov` is a Coverage instance.  `warnings` is a list of regexes.  Every
+        regex must match a warning that was issued by `cov`.  It is OK for
+        extra warnings to be issued by `cov` that are not matched by any regex.
+
+        If `warnings` is empty, then `cov` is not allowed to issue any
+        warnings.
+
+        """
         saved_warnings = []
         def capture_warning(msg):
             """A fake implementation of Coverage._warn, to capture warnings."""
@@ -279,12 +293,18 @@ class CoverageTest(
         except:
             raise
         else:
-            for warning_regex in warnings:
-                for saved in saved_warnings:
-                    if re.search(warning_regex, saved):
-                        break
-                else:
-                    self.fail("Didn't find warning %r in %r" % (warning_regex, saved_warnings))
+            if warnings:
+                for warning_regex in warnings:
+                    for saved in saved_warnings:
+                        if re.search(warning_regex, saved):
+                            break
+                    else:
+                        self.fail("Didn't find warning %r in %r" % (warning_regex, saved_warnings))
+            else:
+                # No warnings expected. Raise if any warnings happened.
+                if saved_warnings:
+                    self.fail("Unexpected warnings: %r" % (saved_warnings,))
+        finally:
             cov._warn = original_warn
 
     def nice_file(self, *fparts):
@@ -333,8 +353,7 @@ class CoverageTest(
         Returns None.
 
         """
-        script = CoverageScript(_covpkg=_covpkg)
-        ret_actual = script.command_line(shlex.split(args))
+        ret_actual = command_line(args, _covpkg=_covpkg)
         self.assertEqual(ret_actual, ret)
 
     coverage_command = "coverage"
@@ -465,3 +484,16 @@ class DebugControlString(DebugControl):
     def get_output(self):
         """Get the output text from the `DebugControl`."""
         return self.output.getvalue()
+
+
+def command_line(args, **kwargs):
+    """Run `args` through the CoverageScript command line.
+
+    `kwargs` are the keyword arguments to the CoverageScript constructor.
+
+    Returns the return code from CoverageScript.command_line.
+
+    """
+    script = CoverageScript(**kwargs)
+    ret = script.command_line(shlex.split(args))
+    return ret

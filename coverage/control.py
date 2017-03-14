@@ -137,8 +137,7 @@ class Coverage(object):
             The `concurrency` parameter can now be a list of strings.
 
         """
-        # Build our configuration from a number of sources:
-        # 1: defaults:
+        # Build our configuration from a number of sources.
         self.config_file, self.config = read_coverage_config(
             config_file=config_file,
             data_file=data_file, cover_pylib=cover_pylib, timid=timid,
@@ -170,7 +169,7 @@ class Coverage(object):
         self.source_pkgs = None
         self.data = self.data_files = self.collector = None
         self.plugins = None
-        self.pylib_dirs = self.cover_dirs = None
+        self.pylib_paths = self.cover_paths = None
         self.data_suffix = self.run_suffix = None
         self._exclude_re = None
         self.debug = None
@@ -180,8 +179,6 @@ class Coverage(object):
         self._inited = False
         # Have we started collecting and not stopped it?
         self._started = False
-        # Have we measured some data and not harvested it?
-        self._measured = False
 
         # If we have sub-process measurement happening automatically, then we
         # want any explicit creation of a Coverage object to mean, this process
@@ -201,6 +198,8 @@ class Coverage(object):
         """
         if self._inited:
             return
+
+        self._inited = True
 
         # Create and configure the debugging controller. COVERAGE_DEBUG_FILE
         # is an environment variable, the name of a file to append debug logs
@@ -292,7 +291,7 @@ class Coverage(object):
         )
 
         # The directories for files considered "installed with the interpreter".
-        self.pylib_dirs = set()
+        self.pylib_paths = set()
         if not self.config.cover_pylib:
             # Look at where some standard modules are located. That's the
             # indication for "installed with the interpreter". In some
@@ -301,7 +300,7 @@ class Coverage(object):
             # we've imported, and take all the different ones.
             for m in (atexit, inspect, os, platform, _pypy_irc_topic, re, _structseq, traceback):
                 if m is not None and hasattr(m, "__file__"):
-                    self.pylib_dirs.add(self._canonical_dir(m))
+                    self.pylib_paths.add(self._canonical_path(m, directory=True))
 
             if _structseq and not hasattr(_structseq, '__file__'):
                 # PyPy 2.4 has no __file__ in the builtin modules, but the code
@@ -312,42 +311,47 @@ class Coverage(object):
                     structseq_file = structseq_new.func_code.co_filename
                 except AttributeError:
                     structseq_file = structseq_new.__code__.co_filename
-                self.pylib_dirs.add(self._canonical_dir(structseq_file))
+                self.pylib_paths.add(self._canonical_path(structseq_file))
 
         # To avoid tracing the coverage.py code itself, we skip anything
         # located where we are.
-        self.cover_dirs = [self._canonical_dir(__file__)]
+        self.cover_paths = [self._canonical_path(__file__, directory=True)]
         if env.TESTING:
+            # Don't include our own test code.
+            self.cover_paths.append(os.path.join(self.cover_paths[0], "tests"))
+
             # When testing, we use PyContracts, which should be considered
             # part of coverage.py, and it uses six. Exclude those directories
             # just as we exclude ourselves.
             import contracts
             import six
             for mod in [contracts, six]:
-                self.cover_dirs.append(self._canonical_dir(mod))
+                self.cover_paths.append(self._canonical_path(mod))
 
         # Set the reporting precision.
         Numbers.set_precision(self.config.precision)
 
         atexit.register(self._atexit)
 
-        self._inited = True
-
         # Create the matchers we need for _should_trace
         if self.source or self.source_pkgs:
             self.source_match = TreeMatcher(self.source)
             self.source_pkgs_match = ModuleMatcher(self.source_pkgs)
         else:
-            if self.cover_dirs:
-                self.cover_match = TreeMatcher(self.cover_dirs)
-            if self.pylib_dirs:
-                self.pylib_match = TreeMatcher(self.pylib_dirs)
+            if self.cover_paths:
+                self.cover_match = TreeMatcher(self.cover_paths)
+            if self.pylib_paths:
+                self.pylib_match = TreeMatcher(self.pylib_paths)
         if self.include:
             self.include_match = FnmatchMatcher(self.include)
         if self.omit:
             self.omit_match = FnmatchMatcher(self.omit)
 
         # The user may want to debug things, show info if desired.
+        self._write_startup_debug()
+
+    def _write_startup_debug(self):
+        """Write out debug info at startup if needed."""
         wrote_any = False
         with self.debug.without_callers():
             if self.debug.should('config'):
@@ -366,10 +370,18 @@ class Coverage(object):
         if wrote_any:
             self.debug.write_formatted_info("end", ())
 
-    def _canonical_dir(self, morf):
-        """Return the canonical directory of the module or file `morf`."""
-        morf_filename = PythonFileReporter(morf, self).filename
-        return os.path.split(morf_filename)[0]
+    def _canonical_path(self, morf, directory=False):
+        """Return the canonical path of the module or file `morf`.
+
+        If the module is a package, then return its directory. If it is a
+        module, then return its file, unless `directory` is True, in which
+        case return its enclosing directory.
+
+        """
+        morf_path = PythonFileReporter(morf, self).filename
+        if morf_path.endswith("__init__.py") or directory:
+            morf_path = os.path.split(morf_path)[0]
+        return morf_path
 
     def _name_for_module(self, module_globals, filename):
         """Get the name of the module for a set of globals and file name.
@@ -663,7 +675,6 @@ class Coverage(object):
 
         self.collector.start()
         self._started = True
-        self._measured = True
 
     def stop(self):
         """Stop measuring code coverage."""
@@ -781,7 +792,7 @@ class Coverage(object):
         )
 
     def get_data(self):
-        """Get the collected data and reset the collector.
+        """Get the collected data.
 
         Also warn about various problems collecting data.
 
@@ -791,11 +802,19 @@ class Coverage(object):
 
         """
         self._init()
-        if not self._measured:
-            return self.data
 
-        self.collector.save_data(self.data)
+        if self.collector.save_data(self.data):
+            self._post_save_work()
 
+        return self.data
+
+    def _post_save_work(self):
+        """After saving data, look for warnings, post-work, etc.
+
+        Warn about things that should have happened but didn't.
+        Look for unexecuted files.
+
+        """
         # If there are still entries in the source_pkgs_unmatched list,
         # then we never encountered those packages.
         if self._warn_unimported_source:
@@ -821,22 +840,13 @@ class Coverage(object):
                 not os.path.exists(sys.modules[pkg].__file__)):
                 continue
             pkg_file = source_for_file(sys.modules[pkg].__file__)
-
-            if not pkg_file.endswith('__init__.py'):
-                # We only want to explore the source tree of packages.
-                # For instance if pkg_file is /lib/python2.7/site-packages/args.pyc,
-                # we do not want to explore all of /lib/python2.7/site-packages.
-                continue
-            self._find_unexecuted_files(self._canonical_dir(pkg_file))
+            self._find_unexecuted_files(self._canonical_path(pkg_file))
 
         for src in self.source:
             self._find_unexecuted_files(src)
 
         if self.config.note:
             self.data.add_run_info(note=self.config.note)
-
-        self._measured = False
-        return self.data
 
     def _find_plugin_files(self, src_dir):
         for plugin in self.plugins:
@@ -1102,8 +1112,8 @@ class Coverage(object):
         info = [
             ('version', covmod.__version__),
             ('coverage', covmod.__file__),
-            ('cover_dirs', self.cover_dirs),
-            ('pylib_dirs', self.pylib_dirs),
+            ('cover_paths', self.cover_paths),
+            ('pylib_paths', self.pylib_paths),
             ('tracer', self.collector.tracer_name()),
             ('plugins.file_tracers', ft_plugins),
             ('config_files', self.config.attempted_config_files),

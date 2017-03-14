@@ -24,9 +24,13 @@ Coverage.py runs on many versions of Python:
 * PyPy2 5.6 and PyPy3 5.5.
 * Jython 2.7.1, though not for reporting.
 
-Documentation is on `Read the Docs <http://coverage.readthedocs.io>`_.
-Code repository and issue tracker are on `Bitbucket <http://bitbucket.org/ned/coveragepy>`_,
-with a mirrored repository on `GitHub <https://github.com/nedbat/coveragepy>`_.
+Documentation is on `Read the Docs`_.  Code repository and issue tracker are on
+`Bitbucket`_, with a mirrored repository on `GitHub`_.
+
+.. _Read the Docs: http://coverage.readthedocs.io
+.. _Bitbucket: http://bitbucket.org/ned/coveragepy
+.. _GitHub: https://github.com/nedbat/coveragepy
+
 
 **New in 4.3:** HTML ``--skip-covered``, sys.excepthook support, tox.ini
 support.
@@ -42,8 +46,9 @@ support, --skip-covered, HTML filtering, and more than 50 issues closed.
 Getting Started
 ---------------
 
-See the `quick start <http://coverage.readthedocs.io/#quick-start>`_
-section of the docs.
+See the `Quick Start`_ section of the docs.
+
+.. _Quick Start: http://coverage.readthedocs.io/#quick-start
 
 
 License
@@ -58,7 +63,7 @@ Licensed under the `Apache 2.0 License`_.  For details, see `NOTICE.txt`_.
 .. |ci-status| image:: https://travis-ci.org/nedbat/coveragepy.svg?branch=master
     :target: https://travis-ci.org/nedbat/coveragepy
     :alt: Build status
-.. |win-ci-status| image:: https://ci.appveyor.com/api/projects/status/bitbucket/ned/coveragepy?svg=true
+.. |win-ci-status| image:: https://ci.appveyor.com/api/projects/status/kmeqpdje7h9r6vsf/branch/master?svg=true
     :target: https://ci.appveyor.com/project/nedbat/coveragepy
     :alt: Windows build status
 .. |docs| image:: https://readthedocs.org/projects/coverage/badge/?version=latest&style=flat
@@ -88,8 +93,8 @@ Licensed under the `Apache 2.0 License`_.  For details, see `NOTICE.txt`_.
 .. |codecov| image:: http://codecov.io/github/nedbat/coveragepy/coverage.svg?branch=master
     :target: http://codecov.io/github/nedbat/coveragepy?branch=master
     :alt: Coverage!
-.. |commits-since| image:: https://img.shields.io/github/commits-since/nedbat/coveragepy/coverage-4.3.3.svg
-    :target: https://github.com/nedbat/coveragepy/compare/coverage-4.3.3...master
+.. |commits-since| image:: https://img.shields.io/github/commits-since/nedbat/coveragepy/coverage-4.3.4.svg
+    :target: https://github.com/nedbat/coveragepy/compare/coverage-4.3.4...master
     :alt: See latest work
 .. |saythanks| image:: https://img.shields.io/badge/saythanks.io-%E2%98%BC-1EAEDB.svg
     :target: https://saythanks.io/to/nedbat

@@ -5,6 +5,8 @@
 
 import threading
 
+from flaky import flaky
+
 import coverage
 from coverage import env
 from coverage.files import abs_file
@@ -47,6 +49,9 @@ def measurable_line(l):
         return False
     if l.startswith('else:'):
         return False
+    if env.JYTHON and l.startswith(('try:', 'except:', 'except ', 'break', 'with ')):
+        # Jython doesn't measure these statements.
+        return False                    # pragma: only jython
     return True
 
 
@@ -349,6 +354,7 @@ MULTI_CODE = """
     """
 
 
+@flaky      # Sometimes a test fails due to inherent randomness. Try one more time.
 class MultiprocessingTest(CoverageTest):
     """Test support of the multiprocessing module."""
 
@@ -365,6 +371,7 @@ class MultiprocessingTest(CoverageTest):
         self.make_file(".coveragerc", """\
             [run]
             concurrency = %s
+            source = .
             """ % concurrency)
 
         if env.PYVERSION >= (3, 4):

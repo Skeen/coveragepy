@@ -143,10 +143,17 @@ class SimpleArcTest(CoverageTest):
             )
 
     def test_what_is_the_sound_of_no_lines_clapping(self):
+        if env.JYTHON:
+            # Jython reports no lines for an empty file.
+            arcz_missing=".1 1."                    # pragma: only jython
+        else:
+            # Other Pythons report one line.
+            arcz_missing=""
         self.check_coverage("""\
             # __init__.py
             """,
             arcz=".1 1.",
+            arcz_missing=arcz_missing,
         )
 
 
@@ -401,7 +408,7 @@ class LoopArcTest(CoverageTest):
 
     def test_other_comprehensions(self):
         if env.PYVERSION < (2, 7):
-            self.skipTest("No set or dict comprehensions before 2.7")       # pragma: not covered
+            self.skipTest("No set or dict comprehensions before 2.7")
         # Set comprehension:
         self.check_coverage("""\
             o = ((1,2), (3,4))
@@ -425,7 +432,7 @@ class LoopArcTest(CoverageTest):
 
     def test_multiline_dict_comp(self):
         if env.PYVERSION < (2, 7):
-            self.skipTest("No set or dict comprehensions before 2.7")       # pragma: not covered
+            self.skipTest("No set or dict comprehensions before 2.7")
         if env.PYVERSION < (3, 5):
             arcz = "-42 2B B-4   2-4"
         else:
@@ -1094,10 +1101,11 @@ class OptimizedIfTest(CoverageTest):
                     if 0: e = 11
                     f = 12
                     if 0: g = 13
-            h = 14
+                    h = 14
+            i = 15
             """,
-            lines=[1, 12, 14],
-            arcz=".1 1C CE E.",
+            lines=[1, 12, 14, 15],
+            arcz=".1 1C CE EF F.",
         )
 
     def test_constant_if(self):

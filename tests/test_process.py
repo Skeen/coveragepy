@@ -1,9 +1,10 @@
-# coding: utf8
+# coding: utf-8
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
 # For details: https://bitbucket.org/ned/coveragepy/src/default/NOTICE.txt
 
 """Tests for process behavior of coverage.py."""
 
+import distutils.sysconfig          # pylint: disable=import-error
 import glob
 import os
 import os.path
@@ -581,7 +582,7 @@ class ProcessTest(CoverageTest):
         self.assertEqual(infos[0]['note'], u"These are musical notes: ♫𝅗𝅥♩")
 
     @pytest.mark.expensive
-    def test_fullcoverage(self):                        # pragma: not covered
+    def test_fullcoverage(self):                        # pragma: no metacov
         if env.PY2:             # This doesn't work on Python 2.
             self.skipTest("fullcoverage doesn't work on Python 2.")
         # It only works with the C tracer, and if we aren't measuring ourselves.
@@ -680,31 +681,35 @@ TRY_EXECFILE = os.path.join(os.path.dirname(__file__), "modules/process_test/try
 class EnvironmentTest(CoverageTest):
     """Tests using try_execfile.py to test the execution environment."""
 
-    def setUp(self):
-        super(EnvironmentTest, self).setUp()
+    def assert_tryexecfile_output(self, out1, out2):
+        """Assert that the output we got is a successful run of try_execfile.py.
 
-        if env.JYTHON:
-            # Jython has a different sys.argv[0], always skip it.
-            self.set_environ("COVERAGE_TRY_EXECFILE_SKIPS", "argv0")    # pragma: only jython
+        `out1` and `out2` must be the same, modulo a few slight known platform
+        differences.
 
-    def assert_execfile_output(self, out):
-        """Assert that the output we got is a successful run of try_execfile.py"""
-        self.assertIn('"DATA": "xyzzy"', out)
+        """
+        # First, is this even credible try_execfile.py output?
+        self.assertIn('"DATA": "xyzzy"', out1)
+
+        if env.JYTHON:                  # pragma: only jython
+            # Argv0 is different for Jython, remove that from the comparison.
+            out1 = re_lines(out1, r'\s+"argv0":', match=False)
+            out2 = re_lines(out2, r'\s+"argv0":', match=False)
+
+        self.assertMultiLineEqual(out1, out2)
 
     def test_coverage_run_is_like_python(self):
         with open(TRY_EXECFILE) as f:
             self.make_file("run_me.py", f.read())
         out_cov = self.run_command("coverage run run_me.py")
         out_py = self.run_command("python run_me.py")
-        self.assertMultiLineEqual(out_cov, out_py)
-        self.assert_execfile_output(out_cov)
+        self.assert_tryexecfile_output(out_cov, out_py)
 
     def test_coverage_run_dashm_is_like_python_dashm(self):
         # These -m commands assume the coverage tree is on the path.
         out_cov = self.run_command("coverage run -m process_test.try_execfile")
         out_py = self.run_command("python -m process_test.try_execfile")
-        self.assertMultiLineEqual(out_cov, out_py)
-        self.assert_execfile_output(out_cov)
+        self.assert_tryexecfile_output(out_cov, out_py)
 
     def test_coverage_run_dir_is_like_python_dir(self):
         with open(TRY_EXECFILE) as f:
@@ -724,8 +729,7 @@ class EnvironmentTest(CoverageTest):
             ignored += "|"+re.escape(os.getcwd())
         out_cov = re_lines(out_cov, ignored, match=False)
         out_py = re_lines(out_py, ignored, match=False)
-        self.assertMultiLineEqual(out_cov, out_py)
-        self.assert_execfile_output(out_cov)
+        self.assert_tryexecfile_output(out_cov, out_py)
 
     def test_coverage_run_dashm_equal_to_doubledashsource(self):
         """regression test for #328
@@ -738,8 +742,7 @@ class EnvironmentTest(CoverageTest):
             "coverage run --source process_test.try_execfile -m process_test.try_execfile"
         )
         out_py = self.run_command("python -m process_test.try_execfile")
-        self.assertMultiLineEqual(out_cov, out_py)
-        self.assert_execfile_output(out_cov)
+        self.assert_tryexecfile_output(out_cov, out_py)
 
     def test_coverage_run_dashm_superset_of_doubledashsource(self):
         """Edge case: --source foo -m foo.bar"""
@@ -748,8 +751,7 @@ class EnvironmentTest(CoverageTest):
             "coverage run --source process_test -m process_test.try_execfile"
         )
         out_py = self.run_command("python -m process_test.try_execfile")
-        self.assertMultiLineEqual(out_cov, out_py)
-        self.assert_execfile_output(out_cov)
+        self.assert_tryexecfile_output(out_cov, out_py)
 
         st, out = self.run_command_status("coverage report")
         self.assertEqual(st, 0)
@@ -771,8 +773,7 @@ class EnvironmentTest(CoverageTest):
             "coverage run --source process_test myscript"
         )
         out_py = self.run_command("python myscript")
-        self.assertMultiLineEqual(out_cov, out_py)
-        self.assert_execfile_output(out_cov)
+        self.assert_tryexecfile_output(out_cov, out_py)
 
         st, out = self.run_command_status("coverage report")
         self.assertEqual(st, 0)
@@ -786,13 +787,12 @@ class EnvironmentTest(CoverageTest):
 
         out_cov = self.run_command("coverage run -m sub.run_me")
         out_py = self.run_command("python -m sub.run_me")
-        self.assertMultiLineEqual(out_cov, out_py)
-        self.assert_execfile_output(out_cov)
+        self.assert_tryexecfile_output(out_cov, out_py)
 
     def test_coverage_run_dashm_is_like_python_dashm_with__main__207(self):
         if sys.version_info < (2, 7):
-            # Coverage.py isn't bug-for-bug compatible in the behavior of -m for
-            # Pythons < 2.7
+            # Coverage.py isn't bug-for-bug compatible in the behavior
+            # of -m for Pythons < 2.7
             self.skipTest("-m doesn't work the same < Python 2.7")
         # https://bitbucket.org/ned/coveragepy/issue/207
         self.make_file("package/__init__.py", "print('init')")
@@ -973,120 +973,30 @@ class FailUnderTest(CoverageTest):
         )
 
     def test_report(self):
-        st, _ = self.run_command_status("coverage report --fail-under=42")
-        self.assertEqual(st, 0)
         st, _ = self.run_command_status("coverage report --fail-under=43")
         self.assertEqual(st, 0)
         st, _ = self.run_command_status("coverage report --fail-under=44")
         self.assertEqual(st, 2)
 
-    def test_html_report(self):
-        st, _ = self.run_command_status("coverage html --fail-under=42")
-        self.assertEqual(st, 0)
-        st, _ = self.run_command_status("coverage html --fail-under=43")
-        self.assertEqual(st, 0)
-        st, _ = self.run_command_status("coverage html --fail-under=44")
-        self.assertEqual(st, 2)
-
-    def test_xml_report(self):
-        st, _ = self.run_command_status("coverage xml --fail-under=42")
-        self.assertEqual(st, 0)
-        st, _ = self.run_command_status("coverage xml --fail-under=43")
-        self.assertEqual(st, 0)
-        st, _ = self.run_command_status("coverage xml --fail-under=44")
-        self.assertEqual(st, 2)
-
-    def test_fail_under_in_config(self):
-        self.make_file(".coveragerc", "[report]\nfail_under = 43\n")
-        st, _ = self.run_command_status("coverage report")
-        self.assertEqual(st, 0)
-
-        self.make_file(".coveragerc", "[report]\nfail_under = 44\n")
-        st, _ = self.run_command_status("coverage report")
-        self.assertEqual(st, 2)
-
 
 class FailUnderNoFilesTest(CoverageTest):
     """Test that nothing to report results in an error exit status."""
-    def setUp(self):
-        super(FailUnderNoFilesTest, self).setUp()
-        self.make_file(".coveragerc", "[report]\nfail_under = 99\n")
-
     def test_report(self):
+        self.make_file(".coveragerc", "[report]\nfail_under = 99\n")
         st, out = self.run_command_status("coverage report")
-        self.assertIn('No data to report.', out)
-        self.assertEqual(st, 1)
-
-    def test_xml(self):
-        st, out = self.run_command_status("coverage xml")
-        self.assertIn('No data to report.', out)
-        self.assertEqual(st, 1)
-
-    def test_html(self):
-        st, out = self.run_command_status("coverage html")
         self.assertIn('No data to report.', out)
         self.assertEqual(st, 1)
 
 
 class FailUnderEmptyFilesTest(CoverageTest):
     """Test that empty files produce the proper fail_under exit status."""
-    def setUp(self):
-        super(FailUnderEmptyFilesTest, self).setUp()
-
+    def test_report(self):
         self.make_file(".coveragerc", "[report]\nfail_under = 99\n")
         self.make_file("empty.py", "")
         st, _ = self.run_command_status("coverage run empty.py")
         self.assertEqual(st, 0)
-
-    def test_report(self):
         st, _ = self.run_command_status("coverage report")
         self.assertEqual(st, 2)
-
-    def test_xml(self):
-        st, _ = self.run_command_status("coverage xml")
-        self.assertEqual(st, 2)
-
-    def test_html(self):
-        st, _ = self.run_command_status("coverage html")
-        self.assertEqual(st, 2)
-
-
-class FailUnder100Test(CoverageTest):
-    """Tests of the --fail-under switch."""
-
-    def test_99_8(self):
-        self.make_file("ninety_nine_eight.py",
-            "".join("v{i} = {i}\n".format(i=i) for i in range(498)) +
-            "if v0 > 498:\n    v499 = 499\n"
-            )
-        st, _ = self.run_command_status("coverage run ninety_nine_eight.py")
-        self.assertEqual(st, 0)
-        st, out = self.run_command_status("coverage report")
-        self.assertEqual(st, 0)
-        self.assertEqual(
-            self.last_line_squeezed(out),
-            "ninety_nine_eight.py 500 1 99%"
-        )
-
-        st, _ = self.run_command_status("coverage report --fail-under=100")
-        self.assertEqual(st, 2)
-
-
-    def test_100(self):
-        self.make_file("one_hundred.py",
-            "".join("v{i} = {i}\n".format(i=i) for i in range(500))
-            )
-        st, _ = self.run_command_status("coverage run one_hundred.py")
-        self.assertEqual(st, 0)
-        st, out = self.run_command_status("coverage report")
-        self.assertEqual(st, 0)
-        self.assertEqual(
-            self.last_line_squeezed(out),
-            "one_hundred.py 500 0 100%"
-        )
-
-        st, _ = self.run_command_status("coverage report --fail-under=100")
-        self.assertEqual(st, 0)
 
 
 class UnicodeFilePathsTest(CoverageTest):
@@ -1095,7 +1005,7 @@ class UnicodeFilePathsTest(CoverageTest):
     def setUp(self):
         super(UnicodeFilePathsTest, self).setUp()
         if env.JYTHON:
-            self.skipTest("Jython 2 doesn't like accented file names")
+            self.skipTest("Jython doesn't like accented file names")
 
     def test_accented_dot_py(self):
         # Make a file with a non-ascii character in the filename.
@@ -1174,17 +1084,16 @@ class UnicodeFilePathsTest(CoverageTest):
 
 def possible_pth_dirs():
     """Produce a sequence of directories for trying to write .pth files."""
-    # First look through sys.path, and we find a .pth file, then it's a good
+    # First look through sys.path, and if we find a .pth file, then it's a good
     # place to put ours.
-    for d in sys.path:
-        g = glob.glob(os.path.join(d, "*.pth"))
-        if g:
-            yield d
+    for pth_dir in sys.path:                        # pragma: part covered
+        pth_files = glob.glob(os.path.join(pth_dir, "*.pth"))
+        if pth_files:
+            yield pth_dir
 
     # If we're still looking, then try the Python library directory.
     # https://bitbucket.org/ned/coveragepy/issue/339/pth-test-malfunctions
-    import distutils.sysconfig                  # pylint: disable=import-error
-    yield distutils.sysconfig.get_python_lib()
+    yield distutils.sysconfig.get_python_lib()      # pragma: cant happen
 
 
 def find_writable_pth_directory():
@@ -1194,13 +1103,13 @@ def find_writable_pth_directory():
         with open(try_it, "w") as f:
             try:
                 f.write("foo")
-            except (IOError, OSError):              # pragma: not covered
+            except (IOError, OSError):              # pragma: cant happen
                 continue
 
         os.remove(try_it)
         return pth_dir
 
-    return None
+    return None                                     # pragma: cant happen
 
 WORKER = os.environ.get('PYTEST_XDIST_WORKER', '')
 PTH_DIR = find_writable_pth_directory()
@@ -1237,11 +1146,12 @@ class ProcessStartupTest(ProcessCoverageMixin, CoverageTest):
             """)
         # sub.py will write a few lines.
         self.make_file("sub.py", """\
-            with open("out.txt", "w") as f:
-                f.write("Hello, world!\\n")
+            f = open("out.txt", "w")
+            f.write("Hello, world!\\n")
+            f.close()
             """)
 
-    def test_subprocess_with_pth_files(self):           # pragma: not covered
+    def test_subprocess_with_pth_files(self):           # pragma: no metacov
         if env.METACOV:
             self.skipTest("Can't test sub-process pth file suppport during metacoverage")
 
@@ -1266,9 +1176,9 @@ class ProcessStartupTest(ProcessCoverageMixin, CoverageTest):
         self.assert_exists(".mycovdata")
         data = coverage.CoverageData()
         data.read_file(".mycovdata")
-        self.assertEqual(data.line_counts()['sub.py'], 2)
+        self.assertEqual(data.line_counts()['sub.py'], 3)
 
-    def test_subprocess_with_pth_files_and_parallel(self):  # pragma: not covered
+    def test_subprocess_with_pth_files_and_parallel(self):  # pragma: no metacov
         # https://bitbucket.org/ned/coveragepy/issues/492/subprocess-coverage-strange-detection-of
         if env.METACOV:
             self.skipTest("Can't test sub-process pth file suppport during metacoverage")
@@ -1290,7 +1200,7 @@ class ProcessStartupTest(ProcessCoverageMixin, CoverageTest):
         self.assert_exists(".coverage")
         data = coverage.CoverageData()
         data.read_file(".coverage")
-        self.assertEqual(data.line_counts()['sub.py'], 2)
+        self.assertEqual(data.line_counts()['sub.py'], 3)
 
         # assert that there are *no* extra data files left over after a combine
         data_files = glob.glob(os.getcwd() + '/.coverage*')
@@ -1315,7 +1225,7 @@ class ProcessStartupWithSourceTest(ProcessCoverageMixin, CoverageTest):
 
     def assert_pth_and_source_work_together(
         self, dashm, package, source
-    ):                                                  # pragma: not covered
+    ):                                                  # pragma: no metacov
         """Run the test for a particular combination of factors.
 
         The arguments are all strings:
@@ -1347,14 +1257,17 @@ class ProcessStartupWithSourceTest(ProcessCoverageMixin, CoverageTest):
         # Main will run sub.py.
         self.make_file(path("main.py"), """\
             import %s
-            if True: pass
+            a = 2
+            b = 3
             """ % fullname('sub'))
         if package:
             self.make_file(path("__init__.py"), "")
         # sub.py will write a few lines.
         self.make_file(path("sub.py"), """\
-            with open("out.txt", "w") as f:
-                f.write("Hello, world!")
+            # Avoid 'with' so Jython can play along.
+            f = open("out.txt", "w")
+            f.write("Hello, world!")
+            f.close()
             """)
         self.make_file("coverage.ini", """\
             [run]
@@ -1379,7 +1292,7 @@ class ProcessStartupWithSourceTest(ProcessCoverageMixin, CoverageTest):
         data.read_file(".coverage")
         summary = data.line_counts()
         print(summary)
-        self.assertEqual(summary[source + '.py'], 2)
+        self.assertEqual(summary[source + '.py'], 3)
         self.assertEqual(len(summary), 1)
 
     def test_dashm_main(self):
