@@ -90,10 +90,11 @@ class CoveragePlugin(object):
         _needs_to_implement(self, "file_reporter")
 
     def find_executable_files(self, src_dir):
-        """Get a list of unexecuted files in `src_dir`.
+        """Yield all of the executable files in `dirname`, recursively.
 
-        Search for files in `src_dir` that are probably of interest.
-
+        Executability is a plugin-specific property, but generally means files
+        which would have been considered for coverage analysis, had they been
+        included automatically.
         """
         return []
 
