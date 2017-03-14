@@ -860,7 +860,7 @@ class Coverage(object):
         and add them as unexecuted files in `self.data`.
 
         """
-        py_files = ((py_file, "") for py_file in files.find_python_files(src_dir))
+        py_files = ((py_file, None) for py_file in files.find_python_files(src_dir))
         plugin_files = self._find_plugin_files(src_dir)
 
         for file_path, plugin_name in itertools.chain(py_files, plugin_files):
